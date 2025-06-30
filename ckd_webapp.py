@@ -4,26 +4,145 @@ import numpy as np
 import joblib
 import os
 
-st.set_page_config(page_title="CKD Predictor", layout="centered")
-st.title("Chronic Kidney Disease Predictor")
-st.markdown("""Enter patient data below and get instant predictions.
+st.set_page_config(page_title="CKD Stage Predictor", layout="centered")
+st.title("🧬 Chronic Kidney Disease (CKD) Stage Predictor")
+st.markdown("📋 Enter patient details or upload a CSV file to detect CKD and determine its stage.")
+
+# Sidebar
+st.sidebar.image("https://tse2.mm.bing.net/th?id=OIP.dc0PQ6gmNWvTwc7cxKrFbgHaHa", width=120)
+st.sidebar.title("ℹ️ About")
+st.sidebar.markdown("""
+This app predicts **CKD presence** using a trained ML model and determines the **CKD stage** using the **eGFR value**.  
+It also provides **stage-specific treatment** and **lifestyle recommendations**.
 """)
 
-# Load model and preprocessing objects
+# --- Load model and preprocessing objects ---
 def load_object(path):
     return joblib.load(path)
 
 model_path = os.path.join("models", "ckd_best_model.joblib")
 scaler_path = os.path.join("models", "scaler.joblib")
 selector_path = os.path.join("models", "selector.joblib")
-encoder_path = os.path.join("models", "encoder.joblib")
 
 model = load_object(model_path)
 scaler = load_object(scaler_path) if os.path.exists(scaler_path) else None
 selector = load_object(selector_path) if os.path.exists(selector_path) else None
-encoder = load_object(encoder_path) if os.path.exists(encoder_path) else None
 
-# All features from the dataset header (update categorical types as needed)
+# --- CKD Staging from eGFR ---
+def determine_ckd_stage(egfr):
+    try:
+        egfr = float(egfr)
+        if egfr >= 90:
+            return "Stage 1"
+        elif egfr >= 60:
+            return "Stage 2"
+        elif egfr >= 30:
+            return "Stage 3"
+        elif egfr >= 15:
+            return "Stage 4"
+        else:
+            return "Stage 5"
+    except:
+        return "Unknown"
+
+stage_treatment = {
+    "Stage 1": {
+        "medications": (
+            "- Control blood pressure (aim <130/80 mmHg) with ACE inhibitors or ARBs if indicated\n"
+            "- Manage blood glucose tightly in diabetics\n"
+            "- Avoid NSAIDs and other nephrotoxic drugs\n"
+            "- Use lipid-lowering agents if needed"
+        ),
+        "lifestyle": (
+            "- Maintain regular moderate exercise (e.g., 30 mins daily)\n"
+            "- Follow a low-sodium diet (<2,300 mg/day)\n"
+            "- Maintain healthy weight (BMI 18.5-24.9)\n"
+            "- Avoid smoking and excessive alcohol\n"
+            "- Stay hydrated but avoid overhydration"
+        )
+    },
+    "Stage 2": {
+        "medications": (
+            "- Continue ACE inhibitors or ARBs for kidney protection\n"
+            "- Start statins if hyperlipidemia present\n"
+            "- Monitor and treat anemia if develops\n"
+            "- Control blood pressure and glucose meticulously"
+        ),
+        "lifestyle": (
+            "- Adopt a low protein diet (0.6-0.8 g/kg/day) if advised\n"
+            "- Limit salt intake and avoid processed foods\n"
+            "- Smoking cessation\n"
+            "- Regular physical activity tailored to patient’s ability\n"
+            "- Reduce stress and ensure good sleep hygiene"
+        )
+    },
+    "Stage 3": {
+        "medications": (
+            "- Treat anemia with erythropoiesis-stimulating agents if indicated\n"
+            "- Manage bone-mineral disorders (phosphate binders, vitamin D supplements)\n"
+            "- Statins for cardiovascular risk reduction\n"
+            "- Manage fluid overload with diuretics if needed"
+        ),
+        "lifestyle": (
+            "- Limit potassium and phosphorus intake as per dietitian advice\n"
+            "- Consult dietitian for tailored nutrition plan\n"
+            "- Maintain physical activity but avoid overexertion\n"
+            "- Avoid nephrotoxic drugs\n"
+            "- Monitor and control body weight"
+        )
+    },
+    "Stage 4": {
+        "medications": (
+            "- Prepare for renal replacement therapy (dialysis or transplant)\n"
+            "- Treat complications like acidosis, hyperkalemia\n"
+            "- Manage anemia and mineral bone disease aggressively\n"
+            "- Optimize cardiovascular risk management"
+        ),
+        "lifestyle": (
+            "- Frequent nephrology visits and monitoring\n"
+            "- Patient education on dialysis options and lifestyle\n"
+            "- Follow fluid restrictions and low-sodium diet\n"
+            "- Avoid infection risks\n"
+            "- Psychological support and counseling"
+        )
+    },
+    "Stage 5": {
+        "medications": (
+            "- Initiate dialysis (hemodialysis or peritoneal dialysis) or prepare for kidney transplant\n"
+            "- Use erythropoiesis-stimulating agents and iron supplements\n"
+            "- Manage secondary hyperparathyroidism and other metabolic complications\n"
+            "- Pain and symptom management"
+        ),
+        "lifestyle": (
+            "- Strict dialysis diet (low potassium, low phosphorus, controlled protein)\n"
+            "- Strict fluid restriction\n"
+            "- Maintain dialysis schedule and access care\n"
+            "- Prepare psychologically for transplant if eligible\n"
+            "- Engage in light physical activity as tolerated"
+        )
+    }
+}
+
+
+# --- Categorical encoding ---
+categorical_maps = {
+    "Red blood cells in urine": {"normal": 0, "abnormal": 1},
+    "Pus cells in urine": {"normal": 0, "abnormal": 1},
+    "Pus cell clumps in urine": {"not present": 0, "present": 1},
+    "Bacteria in urine": {"not present": 0, "present": 1},
+    "Hypertension (yes/no)": {"no": 0, "yes": 1},
+    "Diabetes mellitus (yes/no)": {"no": 0, "yes": 1},
+    "Coronary artery disease (yes/no)": {"no": 0, "yes": 1},
+    "Appetite (good/poor)": {"good": 0, "poor": 1},
+    "Pedal edema (yes/no)": {"no": 0, "yes": 1},
+    "Anemia (yes/no)": {"no": 0, "yes": 1},
+    "Family history of chronic kidney disease": {"no": 0, "yes": 1},
+    "Smoking status": {"no": 0, "yes": 1},
+    "Physical activity level": {"low": 0, "medium": 1, "high": 2},
+    "Urinary sediment microscopy results": {"normal": 0, "abnormal": 1}
+}
+
+# --- Feature list ---
 feature_info = [
     ("Age of the patient", "number"),
     ("Blood pressure (mm/Hg)", "number"),
@@ -68,34 +187,20 @@ feature_info = [
     ("C-reactive protein (CRP) level", "number"),
     ("Interleukin-6 (IL-6) level", "number")
 ]
+ # ← Copy your full feature_info list here
 
-st.header("Input Patient Data")
+# --- Manual Input Form ---
+st.header("📝 Input Patient Data Manually")
 user_input = {}
-for feature, ftype in feature_info:
-    if isinstance(ftype, list):
-        user_input[feature] = st.selectbox(f"{feature}", ftype)
-    else:
-        user_input[feature] = st.text_input(f"{feature}")
+col1, col2 = st.columns(2)
+for idx, (feature, ftype) in enumerate(feature_info):
+    with col1 if idx % 2 == 0 else col2:
+        if isinstance(ftype, list):
+            user_input[feature] = st.selectbox(f"{feature}", ftype)
+        else:
+            user_input[feature] = st.text_input(f"{feature}")
 
-# Manual encoding for categorical fields (must match label encoding in training)
-categorical_maps = {
-    "Red blood cells in urine": {"normal": 0, "abnormal": 1},
-    "Pus cells in urine": {"normal": 0, "abnormal": 1},
-    "Pus cell clumps in urine": {"not present": 0, "present": 1},
-    "Bacteria in urine": {"not present": 0, "present": 1},
-    "Hypertension (yes/no)": {"no": 0, "yes": 1},
-    "Diabetes mellitus (yes/no)": {"no": 0, "yes": 1},
-    "Coronary artery disease (yes/no)": {"no": 0, "yes": 1},
-    "Appetite (good/poor)": {"good": 0, "poor": 1},
-    "Pedal edema (yes/no)": {"no": 0, "yes": 1},
-    "Anemia (yes/no)": {"no": 0, "yes": 1},
-    "Family history of chronic kidney disease": {"no": 0, "yes": 1},
-    "Smoking status": {"no": 0, "yes": 1},
-    "Physical activity level": {"low": 0, "medium": 1, "high": 2},
-    "Urinary sediment microscopy results": {"normal": 0, "abnormal": 1}
-}
-
-if st.button("Predict"):
+if st.button("🔍 Predict from Input"):
     try:
         input_data = {}
         for feature, ftype in feature_info:
@@ -105,50 +210,72 @@ if st.button("Predict"):
             else:
                 input_data[feature] = pd.to_numeric(val, errors='coerce')
         input_df = pd.DataFrame([input_data])
-        st.write("Processed input for model:")
+        st.write("🔧 Processed Input:")
         st.dataframe(input_df)
+
         if input_df.isnull().any().any():
-            st.error("Please fill all fields with valid values.")
+            st.error("❌ Please fill all fields correctly.")
         else:
             if scaler:
                 input_df = scaler.transform(input_df)
             if selector:
                 input_df = selector.transform(input_df)
             prediction = model.predict(input_df)[0]
-            st.success(f"Prediction: {'CKD Detected' if prediction == 1 else 'No CKD Detected'}")
+
+            if prediction == 1:
+                st.success("✅ CKD Detected")
+                egfr_value = user_input.get("Estimated Glomerular Filtration Rate (eGFR)", None)
+                ckd_stage = determine_ckd_stage(egfr_value)
+                st.markdown(f"### 🔬 CKD Stage: **{ckd_stage}**")
+                if ckd_stage in stage_treatment:
+                    st.subheader(f"🩺 Recommendations for {ckd_stage}")
+                    st.markdown(f"**💊 Medications:**\n{stage_treatment[ckd_stage]['medications']}")
+                    st.markdown(f"**🍎 Lifestyle:**\n{stage_treatment[ckd_stage]['lifestyle']}")
+            else:
+                st.success("🟢 No CKD Detected")
     except Exception as e:
         st.error(f"Error: {e}")
 
-# Add file upload for CSV input
-st.header("Or Upload Patient Data CSV")
-uploaded_file = st.file_uploader("Choose a CSV file with patient data", type=["csv"])
+# --- CSV Upload ---
+st.header("📁 Or Upload CSV")
+uploaded_file = st.file_uploader("Choose a CSV file", type=["csv"])
 if uploaded_file is not None:
     try:
         df_uploaded = pd.read_csv(uploaded_file)
-        # Remove index column if present
         if 'Unnamed: 0' in df_uploaded.columns:
             df_uploaded = df_uploaded.drop(columns=['Unnamed: 0'])
-        st.write("Uploaded Data:")
+        st.write("📄 Uploaded Data:")
         st.dataframe(df_uploaded)
-        # Use the first row for prediction
+
         input_data = df_uploaded.iloc[0].to_dict()
-        # Map categorical fields
-        for feature, ftype in feature_info:
-            if feature in categorical_maps and feature in input_data:
-                val = input_data[feature]
-                if not isinstance(val, (int, float)):
-                    input_data[feature] = categorical_maps[feature].get(str(val).strip().lower(), 0)
+        for feature in feature_info:
+            feat_name = feature[0]
+            if feat_name in categorical_maps and feat_name in input_data:
+                input_data[feat_name] = categorical_maps[feat_name].get(str(input_data[feat_name]).strip().lower(), 0)
+
         input_df = pd.DataFrame([input_data])
-        st.write("Processed input for model:")
+        st.write("🔧 Processed Input:")
         st.dataframe(input_df)
+
         if input_df.isnull().any().any():
-            st.error("Please fill all fields with valid values in your CSV.")
+            st.error("❌ Invalid/missing values in CSV.")
         else:
             if scaler:
                 input_df = scaler.transform(input_df)
             if selector:
                 input_df = selector.transform(input_df)
             prediction = model.predict(input_df)[0]
-            st.success(f"Prediction: {'CKD Detected' if prediction == 1 else 'No CKD Detected'}")
+
+            if prediction == 1:
+                st.success("✅ CKD Detected")
+                egfr_value = input_data.get("Estimated Glomerular Filtration Rate (eGFR)", None)
+                ckd_stage = determine_ckd_stage(egfr_value)
+                st.markdown(f"### 🔬 CKD Stage: **{ckd_stage}**")
+                if ckd_stage in stage_treatment:
+                    st.subheader(f"🩺 Recommendations for {ckd_stage}")
+                    st.markdown(f"**💊 Medications:**\n{stage_treatment[ckd_stage]['medications']}")
+                    st.markdown(f"**🍎 Lifestyle:**\n{stage_treatment[ckd_stage]['lifestyle']}")
+            else:
+                st.success("🟢 No CKD Detected")
     except Exception as e:
-        st.error(f"Error processing uploaded file: {e}")
+        st.error(f"Error: {e}")
